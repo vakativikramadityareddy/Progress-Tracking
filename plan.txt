@@ -1,0 +1,86 @@
+# Team Task Manager – Implementation Plan
+
+## Stack
+| Layer | Technology |
+|---|---|
+| Backend | Node.js, Express.js |
+| ORM | Prisma |
+| Database | PostgreSQL |
+| Auth | JWT (access + refresh tokens) |
+| Frontend | React 18 + Vite |
+| Styling | Tailwind CSS v3 |
+| Deployment | Railway (API) + Vercel (Frontend) |
+
+## Project Structure
+```
+e:\projects\progress tracking\
+├── backend/
+│   ├── prisma/
+│   │   └── schema.prisma
+│   ├── src/
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── routes/
+│   │   ├── utils/
+│   │   └── app.js
+│   ├── .env.example
+│   └── package.json
+└── frontend/
+    ├── src/
+    │   ├── api/
+    │   ├── components/
+    │   ├── contexts/
+    │   ├── pages/
+    │   └── App.jsx
+    ├── tailwind.config.js
+    └── package.json
+```
+
+## Database Schema
+- **User**: id, name, email, password, role (ADMIN|MEMBER), createdAt
+- **Project**: id, name, description, createdById, createdAt, dueDate
+- **Task**: id, title, description, status (PENDING|IN_PROGRESS|COMPLETED), priority, projectId, assigneeId, createdById, dueDate, createdAt
+
+## API Endpoints
+### Auth
+- POST /api/auth/signup
+- POST /api/auth/login
+- POST /api/auth/refresh
+
+### Users
+- GET /api/users (Admin only)
+- GET /api/users/:id
+- PUT /api/users/:id (Admin only)
+
+### Projects
+- GET /api/projects
+- POST /api/projects (Admin only)
+- PUT /api/projects/:id (Admin only)
+- DELETE /api/projects/:id (Admin only)
+
+### Tasks
+- GET /api/tasks
+- POST /api/tasks (Admin only)
+- PUT /api/tasks/:id
+- DELETE /api/tasks/:id (Admin only)
+
+### Dashboard
+- GET /api/dashboard/stats
+
+## Frontend Pages
+1. **Login / Signup** – Auth forms with validation
+2. **Dashboard** – Stats cards + recent activity
+3. **Projects** – List, create, edit projects (Admin)
+4. **Tasks** – Kanban-style board with filters
+5. **Profile** – User profile page
+
+## RBAC Rules
+| Action | Admin | Member |
+|---|---|---|
+| Create Project | ✅ | ❌ |
+| Create Task | ✅ | ❌ |
+| Assign Task | ✅ | ❌ |
+| View all tasks | ✅ | ❌ (own only) |
+| Update task status | ✅ | ✅ (own only) |
+| Delete Task/Project | ✅ | ❌ |
+| View Dashboard | ✅ | ✅ |
