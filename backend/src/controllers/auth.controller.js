@@ -1,132 +1,74 @@
-// const bcrypt = require('bcryptjs');
-// const { body } = require('express-validator');
-// const prisma = require('../utils/prisma');
-// const { generateTokens, verifyRefreshToken } = require('../utils/jwt');
-
-// // ── Validators ───────────────────────────────────────────────────────────────
-// const signupValidators = [
-//   body('name').trim().notEmpty().withMessage('Name is required'),
-//   body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-//   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-//   body('role').optional().isIn(['ADMIN', 'MEMBER']).withMessage('Role must be ADMIN or MEMBER'),
-// ];
-
-// const loginValidators = [
-//   body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-//   body('password').notEmpty().withMessage('Password is required'),
-// ];
-
-// // ── Controllers ──────────────────────────────────────────────────────────────
-// const signup = async (req, res, next) => {
-//   try {
-//     const { name, email, password, role } = req.body;
-
-//     const existing = await prisma.user.findUnique({ where: { email } });
-//     if (existing) return res.status(409).json({ error: 'Email already registered' });
-
-//     const hashed = await bcrypt.hash(password, 12);
-//     const user = await prisma.user.create({
-//       data: { name, email, password: hashed, role: role || 'MEMBER' },
-//       select: { id: true, name: true, email: true, role: true, createdAt: true },
-//     });
-
-//     const tokens = generateTokens({ id: user.id, email: user.email, role: user.role });
-//     res.status(201).json({ user, ...tokens });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
-
-// const login = async (req, res, next) => {
-//   try {
-//     const { email, password } = req.body;
-
-//     const user = await prisma.user.findUnique({ where: { email } });
-//     if (!user) return res.status(401).json({ error: 'Invalid email or password' });
-
-//     const valid = await bcrypt.compare(password, user.password);
-//     if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
-
-//     const { password: _pw, ...userWithoutPw } = user;
-//     const tokens = generateTokens({ id: user.id, email: user.email, role: user.role });
-//     res.json({ user: userWithoutPw, ...tokens });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
-
-// const refresh = async (req, res, next) => {
-//   try {
-//     const { refreshToken } = req.body;
-//     if (!refreshToken) return res.status(400).json({ error: 'Refresh token required' });
-
-//     const decoded = verifyRefreshToken(refreshToken);
-//     const user = await prisma.user.findUnique({
-//       where: { id: decoded.id },
-//       select: { id: true, email: true, role: true },
-//     });
-//     if (!user) return res.status(401).json({ error: 'User not found' });
-
-//     const tokens = generateTokens({ id: user.id, email: user.email, role: user.role });
-//     res.json(tokens);
-//   } catch (err) {
-//     return res.status(401).json({ error: 'Invalid or expired refresh token' });
-//   }
-// };
-
-// const getMe = async (req, res, next) => {
-//   try {
-//     const user = await prisma.user.findUnique({
-//       where: { id: req.user.id },
-//       select: { id: true, name: true, email: true, role: true, createdAt: true },
-//     });
-//     if (!user) return res.status(404).json({ error: 'User not found' });
-//     res.json(user);
-//   } catch (err) {
-//     next(err);
-//   }
-// };
-
-// module.exports = { signup, login, refresh, getMe, signupValidators, loginValidators };
-
-
-
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const prisma = require('../utils/prisma');
-const bcrypt = require('bcrypt');
 
+// Generate access token
+const generateAccessToken = (user) => {
+  return jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || '15m'
+    }
+  );
+};
+
+// Generate refresh token
+const generateRefreshToken = (user) => {
+  return jwt.sign(
+    {
+      id: user.id
+    },
+    process.env.JWT_REFRESH_SECRET,
+    {
+      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
+    }
+  );
+};
+
+// Signup
 const signup = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
-    // validation
     if (!name || !email || !password) {
-      return res.status(400).json({ error: "Name, email and password are required" });
+      return res.status(400).json({ message: 'Name, email and password are required' });
     }
 
-    // check existing user
     const existingUser = await prisma.user.findUnique({
       where: { email }
     });
 
     if (existingUser) {
-      return res.status(400).json({ error: "Email already exists" });
+      return res.status(400).json({ message: 'User already exists' });
     }
 
-    // hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // create user
     const user = await prisma.user.create({
       data: {
         name,
         email,
-        password: hashedPassword,
-        role: role || "MEMBER"
+        password: hashedPassword
       }
     });
 
-    return res.status(201).json({
-      message: "User created successfully",
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    res.status(201).json({
+      accessToken,
       user: {
         id: user.id,
         name: user.name,
@@ -134,14 +76,115 @@ const signup = async (req, res) => {
         role: user.role
       }
     });
-
   } catch (error) {
-    console.error("Signup error:", error);
-    return res.status(500).json({
-      error: "Signup failed",
-      details: error.message
-    });
+    console.error('Signup error:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
-module.exports = { signup };
+// Login
+const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    res.json({
+      accessToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Refresh access token
+const refresh = async (req, res) => {
+  try {
+    const token = req.cookies.refreshToken;
+
+    if (!token) {
+      return res.status(401).json({ message: 'No refresh token provided' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id }
+    });
+
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    const accessToken = generateAccessToken(user);
+
+    res.json({ accessToken });
+  } catch (err) {
+    console.error('Refresh token error:', err);
+    return res.status(401).json({ message: 'Invalid refresh token' });
+  }
+};
+
+// Current user
+const getMe = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+module.exports = {
+  signup,
+  login,
+  refresh,
+  getMe
+};

@@ -1,23 +1,37 @@
-const { verifyAccessToken } = require('../utils/jwt');
+const jwt = require('jsonwebtoken');
 
 const authenticate = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      message: 'Unauthorized: No token provided'
+    });
+  }
+
+  const token = authHeader.split(' ')[1];
+
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
-    const token = authHeader.split(' ')[1];
-    const decoded = verifyAccessToken(token);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        message: 'Token expired',
+        code: 'TOKEN_EXPIRED'
+      });
+    }
+    console.error('Authentication error:', err);
+    return res.status(401).json({
+      message: 'Unauthorized: Invalid token'
+    });
   }
 };
 
 const authorizeAdmin = (req, res, next) => {
   if (req.user?.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Admin access required' });
+    return res.status(403).json({ message: 'Forbidden: Admin access required' });
   }
   next();
 };
@@ -27,7 +41,11 @@ const authorizeOwnerOrAdmin = (userIdField = 'id') => (req, res, next) => {
   if (req.user?.role === 'ADMIN' || req.user?.id === targetId) {
     return next();
   }
-  return res.status(403).json({ error: 'Access denied' });
+  return res.status(403).json({ message: 'Forbidden: Access denied' });
 };
 
-module.exports = { authenticate, authorizeAdmin, authorizeOwnerOrAdmin };
+module.exports = {
+  authenticate,
+  authorizeAdmin,
+  authorizeOwnerOrAdmin
+};

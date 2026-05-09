@@ -84,3 +84,14 @@ e:\projects\progress tracking\
 | Update task status | ✅ | ✅ (own only) |
 | Delete Task/Project | ✅ | ❌ |
 | View Dashboard | ✅ | ✅ |
+
+
+
+
+VIEW DATABASE_URL
+
+Best Option: Prisma Studio (recommended)
+
+From the backend folder run:
+
+npx prisma studio
